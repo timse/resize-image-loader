@@ -11,17 +11,35 @@
 //    require('resize-image?format=webp!./myImage.jpg');
 
 var debug = require('debug')('resize-image-loader');
-var gm = require('gm').subClass({ imageMagick: true });
+var gm = null;
+var hasImageMagick = false;
+try {
+  require('child_process').execSync("gm -help")
+  gm = require('gm').subClass({ imageMagick: true });
+} catch(e){
+  console.info('resize-image-loader: ImageMagick not installed. Falling back to LWIP.');
+}
+
+
+var lwip = require('lwip');
+var sizeOf = require('image-size');
 var Datauri = require('datauri');
 var fs = require('fs');
 var loaderUtils = require('loader-utils');
 
-//added to support cross-platform compatibility
-var path = require('path');
-
 var defaultSizes = ['320w','960w','2048w'];
 var defaultBlur = 40;
 var defaultPlaceholderSize = 20;
+
+var createBlur = function(buffer, ext, defaultBlur, height, width){
+  var uri = new Datauri().format('.'+ext, buffer).content;
+  var blur =  "<svg xmlns='http://www.w3.org/2000/svg' width='100%' viewBox='0 0 " + width + " " + height + "'>" +
+  "<defs><filter id='puppybits'><feGaussianBlur in='SourceGraphic' stdDeviation='" + defaultBlur + "'/></filter></defs>" +
+  "<image width='100%' height='100%' xmlns:xlink='http://www.w3.org/1999/xlink' xlink:href='" + uri + "' filter='url(#puppybits)'></image>" +
+  "</svg>";
+  var micro = new Datauri().format('.svg', new Buffer(blur, 'utf8')).content;
+  var response = {size:{height:height, width:width}, placeholder:micro};
+};
 
 var queue = (function(q, c){
   var max = 10;
@@ -47,39 +65,32 @@ var queue = (function(q, c){
 
 function createPlaceholder(content, placeholder, ext, blur, files){
   return function(next){
+    var source = sizeOf(content);
+    var ratio = source.width/source.height;
+    var width = placeholder
+    var height = Math.floor(placeholder / ratio)
 
-    var getSize = function(){
+    if (gm){
       gm(content)
-        .size(function(err, _size){
-          if (err) {
-            return;
-          }
-          if (!_size) {
-            getSize();
-            return;
-          }
-          setPlaceholder(_size);
-      });
-    };
-
-    var setPlaceholder = function(size){
-      gm(content)
-        .resize(placeholder)
-        .toBuffer(ext, function(err, buf){
-          if (!buf) return;
-          debug("placeholder: " + JSON.stringify(size));
-          var uri = new Datauri().format('.'+ext, buf).content;
-          var blur =  "<svg xmlns='http://www.w3.org/2000/svg' width='100%' viewBox='0 0 " + size.width + " " + size.height + "'>" +
-                        "<defs><filter id='puppybits'><feGaussianBlur in='SourceGraphic' stdDeviation='" + defaultBlur + "'/></filter></defs>" +
-                        "<image width='100%' height='100%' xmlns:xlink='http://www.w3.org/1999/xlink' xlink:href='" + uri + "' filter='url(#puppybits)'></image>" +
-                      "</svg>";
-          var micro = new Datauri().format('.svg', new Buffer(blur, 'utf8')).content;
-          var response = {size:size, placeholder:micro};
+        .resize(width)
+        .toBuffer(ext, function(err, buffer){
+          if (!buffer) return;
+          debug("placeholder: ", height, width);
+          var response = createBlur(buffer, ext, defaultBlur, height, width);
           next(response);
         });
+    } else {
+      lwip.open(content, source.type, function(err, image) {
+        image.batch()
+          .resize(width, height)
+          .toBuffer(source.type, function(err, buffer) {
+            if (!buffer) return;
+            debug("placeholder: " + JSON.stringify(source));
+            var response = createBlur(buffer, ext, defaultBlur, source.height, source.width);
+            next(response);
+          });
+      });
     };
-
-    getSize();
   };
 }
 
@@ -88,25 +99,49 @@ function createResponsiveImages(content, sizes, ext, files, emitFile){
     var count = 0;
     var images = [];
     var imgset = files.map(function(file, i){ return file + ' ' + sizes[i] + ' '; }).join(',');
+    var source = sizeOf(content);
+    var ratio = source.width/source.height;
 
     sizes.map(function(size, i){
       size = parseInt(size);
-      gm(content)
-        .resize(size)
-        .toBuffer(ext, function(err, buf){
-          if (buf){
-            debug('srcset: ' + imgset);
-            images[i] = buf;
-            emitFile(files[i], buf);
-          }
+      var width = size
+      var height = Math.floor(size / ratio)
 
+      if (gm){
+        gm(content)
+          .resize(size)
+          .toBuffer(ext, function(err, buf){
+            if (buf){
+              debug('srcset: ' + imgset);
+              images[i] = buf;
+              emitFile(files[i], buf);
+            }
 
-          count++;
-          if (count >= files.length) {
-            var response = {srcset:imgset};
-            next(response);
-          }
-      });
+            count++;
+            if (count >= files.length) {
+              var response = {srcset:imgset};
+              next(response);
+            }
+        });
+      } else {
+        lwip.open(content, ext, function(err, image) {
+          image.batch()
+            .resize(width, height)
+            .toBuffer(ext, function(err, buffer) {
+              if (buffer){
+                debug('srcset: ' + imgset);
+                images[i] = buffer;
+                emitFile(files[i], buffer);
+              }
+
+              count++;
+              if (count >= files.length) {
+                var response = {srcset:imgset};
+                next(response);
+              }
+            });
+        });
+      }
     });
   };
 }
@@ -132,14 +167,11 @@ module.exports = function(content) {
     // Bypass processing while on watch mode
     return callback(null, content);
   } else {
-    
-    //modified to fix a bug on windows, where the file variable is populated with the entire absolute path
-    var parsedPath = path.parse(this.resourcePath);
-    var file = parsedPath.base;
-    var name = parsedPath.name;
-    var ext = parsedPath.ext.slice(1);
-    
-    
+
+    var paths = this.resourcePath.split('/');
+    var file = paths[paths.length - 1];
+    var name = file.slice(0,file.lastIndexOf('.'));
+    var ext = file.slice(file.lastIndexOf('.')+1, file.length);
     var sizes = query.sizes.map(function(s){ return s; });
     var files = sizes.map(function(size, i){ return name + '-' + size + '.' + ext; });
     var emitFile = this.emitFile;
@@ -166,10 +198,12 @@ module.exports = function(content) {
         if (t2){
           t2(function(result){
             t1(function(result2){
-              Object.keys(result2).map(function(key){
-                result[key] = result2[key];
-              });
-              debug(JSON.stringify(result, undefined, 1));
+              if (result2){
+                Object.keys(result2).map(function(key){
+                  result[key] = result2[key];
+                });
+              }
+              debug("result", JSON.stringify(result));
               callback(null, "module.exports = '"+JSON.stringify(result)+"'");
               next();
             });
@@ -179,7 +213,7 @@ module.exports = function(content) {
 
 
         t1(function(result){
-          debug(JSON.stringify(result, undefined, 1));
+          debug("result", JSON.stringify(result));
           callback(null, "module.exports = '"+JSON.stringify(result)+"'");
           next();
         });

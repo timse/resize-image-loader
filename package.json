@@ -1,6 +1,6 @@
 {
   "name": "resize-image-loader",
-  "version": "0.4.0",
+  "version": "1.0.0",
   "description": "Responsive image loader for webpack",
   "author": "Puppybits @puppybits",
   "keywords": "webpack image resize responsive adaptive",
@@ -21,7 +21,10 @@
     "datauri": "^0.7.1",
     "debug": "^2.2.0",
     "file-loader": "^0.8.4",
-    "loader-utils": "^0.2.6"
+    "gm": "^1.22.0",
+    "image-size": "^0.5.0",
+    "loader-utils": "^0.2.6",
+    "lwip": "0.0.8"
   },
   "peerDependencies": {
     "gm": "*",

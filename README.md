@@ -1,7 +1,5 @@
 # resize-image-loader
 
-**Upgade notice!** The output from v0.3.x to v0.4.x has changed. See below for details.
-
 **Images account for 58%<sup>[1][image-stats]</sup> of web pages. Hyper optimize your images to have massive improvement page load times.**
 
 Resize-image-loader will create responsive images using webpack and [gm](http://aheckmann.github.io/gm/) so only the most effecient image is downloaded for the user's device. Modern browser have an additional attibute on the `img` tag called `srcset`. If `srcset` is supported the browser will use the device's screensize and pixel density to determine the best image to download. Older browsers will default back to the normal `src` image.  This will greatly improve page load times and time to first render while reducing the cost for the user<sup>[2][cost-site]</sup>.
@@ -38,9 +36,9 @@ render(){
 
 ## Advanced Usage
 
-Optionally you make also create a placeholder image. Placeholder images are tiny images that are inlined and blurred until the hi-res image is loaded. This delivers a fully rendered experince to the user as quick as possible without empty boxes or jumpy reflow/layouts. [See facebook's write up for futher details.](https://code.facebook.com/posts/991252547593574/the-technology-behind-preview-photos)
+Optionally you make also create a placeholder image. Placeholder images are tiny images that are inlined and blurred until the hi-res image is loaded. This delivers a fully rendered experience to the user as quick as possible without empty boxes or jumpy reflow/layouts. [See facebook's write up for further details.](https://code.facebook.com/posts/991252547593574/the-technology-behind-preview-photos)
 
-The code below has one `img` using the placeholder image, which is inlined as a datauri. This will load right away and take up minimal space on the inital download (the sample project placeholder is 1.5K gzipped). The second image is the normal image. The user's browser will then choose the optimal image and download that one instead of the src. Once the full image loads, the onLoad handler will trigger a state change and have an animated cross fade between the blured placeholder image and the real hi-res image.
+The code below has one `img` using the placeholder image, which is inlined as a datauri. This will load right away and take up minimal space on the initial download (the sample project placeholder is 1.5K gzipped). The second image is the normal image. The user's browser will then choose the optimal image and download that one instead of the src. Once the full image loads, the onLoad handler will trigger a state change and have an animated cross fade between the blurred placeholder image and the real hi-res image.
 
 ``` javascript
 var responsive = require('resize-image?sizes[]=200w,sizes[]=900w&placeholder=20&blur=40!./myImage.jpg');
@@ -81,10 +79,17 @@ var img = require('image-webpack!./myImage.jpg')
 
 ## Installation
 
-* Install ImageMagick before installing the resize-image-loader
+Added @thibthib request to use [LWIP](https://github.com/EyalAr/lwip). LWIP is a Node
+module for image processing. LWIP does not support WebP and the compression is
+slightly larger than with ImageMagick.
+
+For WebP support and smaller output images, install ImageMagick.
 
 ```sh
-$ brew install ImageMagick // for mac
+// Optional install for Mac, otherwise defaults to the less powerful LWIP Node module
+$ brew install graphicsmagick imagemagick --with-webp
+
+// add resize-image-loader as a dependency
 $ npm install resize-image-loader --save-dev
 ```
 
