@@ -146,6 +146,10 @@ function createResponsiveImages(content, sizes, ext, files, emitFile){
   };
 }
 
+function createOutput(output) {
+    return "module.exports = " + JSON.stringify(output);
+}
+
 module.exports = function(content) {
   var idx = this.loaderIndex;
 
