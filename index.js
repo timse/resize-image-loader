@@ -208,7 +208,7 @@ module.exports = function(content) {
                 });
               }
               debug("result", JSON.stringify(result));
-              callback(null, "module.exports = '"+JSON.stringify(result)+"'");
+              callback(null, createOutput(result));
               next();
             });
           });
@@ -218,7 +218,7 @@ module.exports = function(content) {
 
         t1(function(result){
           debug("result", JSON.stringify(result));
-          callback(null, "module.exports = '"+JSON.stringify(result)+"'");
+          callback(null, createOutput(result));
           next();
         });
       };
